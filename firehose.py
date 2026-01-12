@@ -12,7 +12,7 @@ async def handle_message(message, verbose, keywords, log):
     did = message["did"]
     kind = message["kind"]
     time = message["time_us"]
-    # Can filter older things still in the firehose (UNIX time)
+    # Can filter out older entries (UNIX time)
     # if time < 1732220335962062:
     #   return
     if kind == "commit":
@@ -21,15 +21,20 @@ async def handle_message(message, verbose, keywords, log):
       operation = commit["operation"]
       if operation != "create":
         return
+
       url = f"https://bsky.app/profile/{did}/post/{rkey}"
       utc_time = datetime.fromtimestamp((time / 1000000), timezone("UTC"))
       pacific_time = utc_time.astimezone(timezone("US/Pacific"))
       pretty_time = pacific_time.strftime("%H:%M:%S")
       record = commit["record"]
       text = record["text"]
-      # CAN FILTER FOR SHIT
-#      if "pawg" not in text and "hack" not in text:
-#        return
+
+      # Filter for keywords
+      if len(keywords) > 0:
+        has_keywords = [(word in text) for word in keywords]
+        if True not in has_keywords:
+          return None
+
       print(colored(url, "green", attrs=["bold"]))
       print(colored(pretty_time, "blue", attrs=["bold"]), end=" | ")
       if "reply" in commit["record"]:
@@ -40,14 +45,8 @@ async def handle_message(message, verbose, keywords, log):
         # has images and embed
         embed = commit["record"]["embed"]["$type"].replace("app.bsky.embed.", "").upper()
         print(colored(embed, "yellow", attrs=["bold"]), end=" | ")
-      if len(keywords):
-        has_keyword = any(keyword in text for keyword in keywords)
-        if has_keyword:
-          print(colored(text, "red"))
-        else:
-          print(text)
-      else:
-        print(text)
+
+      print(text)
 
       if verbose:
         print(message)
@@ -80,6 +79,7 @@ parser = argparse.ArgumentParser(description='BlueSky Firehose')
 parser.add_argument('--log', action='store_true', help='If set, store results in log.txt. If keywords we only save matched content.')
 parser.add_argument('--verbose', action='store_true', help='Print entire JSON for each message.')
 parser.add_argument('--keywords', default=[], nargs='*', help='A space-separated list of keywords')
+parser.add_argument('--filter-words', default=[], nargs="*", help="A space-separated list of filter words")
 args = parser.parse_args()
 
 asyncio.get_event_loop().run_until_complete(listen_to_websocket(args.verbose, args.keywords, args.log))
